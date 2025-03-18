@@ -283,7 +283,7 @@ class CsvCompetition:
         print('Origin at: ', origin)
         
         # find top-left positions for map
-        top_left = vector(np.array(X).min(), 1000, np.array(Z).min()) # move up and down here!
+        top_left = origin - vector(0, 1500, 2000) # vector(np.array(X).min(), 1000, np.array(Z).min()) # move up and down here!
         top_left_local = top_left - origin # in local coordinates, 
 
         # use benjamin as top_left:
@@ -306,15 +306,15 @@ class CsvCompetition:
         # print for elevation data:
         tile_lat, tile_lon = tile_to_latlon(x, y, zoom)
         #print(f'get elevation at lat={tile_lat}, lon={tile_lon}, width={width}')  
-        tile_utm_x, tile_utm_y, _, _ = utm.from_latlon(tile_lat, tile_lon)    
+        tile_utm_x, tile_utm_y, _, _ = utm.from_latlon(tile_lat, tile_lon)  
+        tile_utm_x, tile_utm_y = int(tile_utm_x), int(tile_utm_y)  
         print(f'pos of 32632 swissraster: x={tile_utm_x}, y={tile_utm_y}')      
 
         # use tile_utm_x, tile_utm_y from swissraster:
-        #read_swissraster_utm32(tile_utm_x, tile_utm_y, width)
-        
+        read_swissraster_utm32(tile_utm_x, tile_utm_y, width)        
 
         # create 3x3 grid
-        grid_size = 1
+        grid_size = 0 # no ground box
         grid = list(itertools.product(range(grid_size), repeat=2))
         for coord in grid:
             i,j = coord
@@ -338,8 +338,8 @@ class CsvCompetition:
 
 
         # create a grid for our elevation plots
-        #width = 2500 # use 5km plots
-        grid_size = 0
+        width = 2500 # use 5km plots
+        grid_size = 3
         grid = list(itertools.product(range(grid_size), repeat=2))
         for coord in grid:
             i,j = coord
@@ -349,6 +349,7 @@ class CsvCompetition:
             tile_x = (tile_utm_x+i*width)
             tile_y = (tile_utm_y-j*width)
             elevation_data = read_elevation_data_32632(tile_x, tile_y, width+50)
+            read_swissraster_utm32(tile_x, tile_y, width+50)
             assert elevation_data.shape[0] == elevation_data.shape[1], 'elevation must be square'
             #def f(x, y):
             #    return elevation_data[x,y]        
@@ -364,6 +365,7 @@ class CsvCompetition:
             
             # no texture and correct shape
             texture = f'airstart3d/textures/contours/tile_{tile_x}_{tile_y}.png'
+            texture = f'airstart3d/textures/swissraster/tile_{tile_x}_{tile_y}.png'
             p = plot3D(f, elevation_data.shape[0] ,plot_pos.z, plot_pos.z+width+50 , plot_pos.x, plot_pos.x+width+50, 0, 1000, texture=texture)
 
         

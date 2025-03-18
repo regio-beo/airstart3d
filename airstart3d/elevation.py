@@ -153,7 +153,7 @@ def read_elevation_data_4258(lon, lat, width):
 
 def read_swissraster_utm32(x, y, width):
     #tile_path = "/home/benjamin/Downloads/SwissRaster25/swiss-map-raster25_2021_1229_utm32T.tif" # requires colormap
-    tile_path = "/home/benjamin/Downloads/SwissRaster25/Interlaken/merged_raster_utm32T.tif" # full region
+    tile_path = "data/airstart3d/SwissRaster25/Interlaken/merged_raster_utm32T.tif" # full region
     with rasterio.open(tile_path) as src:
         row, col = src.index(x, y)
         window = rasterio.windows.Window(col, row, width, width)

@@ -18,6 +18,7 @@ from vpython import scene, canvas, sphere, vector, rate, color, cylinder, text, 
 from sklearn.cluster import KMeans, AgglomerativeClustering
 
 from airstart3d.elevation import plot3D, read_elevation_data_4258, read_elevation_data_32632, read_swissraster_utm32
+from airstart3d.sun import Sun
 
 '''
 This Script reads the 3d data from the pilots in the start thermal.
@@ -110,8 +111,8 @@ class CsvPilot:
         df['y'] = ys # (ys - 5168141.307)
 
         # Resample in Time (1 second):
-        range_start = as_seconds(start) - as_seconds(airstart)
-        range_end = as_seconds(end) - as_seconds(airstart)
+        range_start = as_seconds(start) - as_seconds(airstart.time())
+        range_end = as_seconds(end) - as_seconds(airstart.time())
         df.set_index('seconds', inplace=True)
         new_index = np.arange(range_start, range_end)
         df = df.reindex(new_index)
@@ -147,12 +148,13 @@ class CsvPilot:
 
 class CsvCompetition:
 
-    def __init__(self, directory):
+    def __init__(self, directory, airstart):
         self.directory = directory # here are the csv stored        
         self.pilots = []
-        self.view = None        
+        self.view = None
+        self.airstart = airstart      
 
-    def read_pilots(self, airstart, start, end):
+    def read_pilots(self, start, end):
         self.total_time = as_seconds(end) - as_seconds(start) # total time in seconds
         # read and process all CSV files:
         counter = 200
@@ -165,7 +167,7 @@ class CsvCompetition:
                 try:
                     #nrows = 2*60*60 # only first two hours
                     nrows = None
-                    pilot.process(airstart, start, end, nrows)
+                    pilot.process(self.airstart, start, end, nrows)
                     self.pilots.append(pilot)
                 except ValueError:
                     print(f'Pilot {pilot.name} error. Skip!')
@@ -255,7 +257,7 @@ class CsvCompetition:
 
 
 
-    def animate_pilots(self, fix_pilot=False):
+    def animate_pilots(self, start, fix_pilot=False):
         
         # Setup Scene        
         scene = canvas(width=1920-50, height=1080-100, resizable=True, background=vector(44/255, 44/255, 45/255))
@@ -266,6 +268,11 @@ class CsvCompetition:
             LL.color *= 0.2
             print( LL.pos, LL.direction, LL.color )        
         scene.ambient = color.white * 0.5
+
+        # use Sun only
+        scene.lights = []
+        scene.ambient = color.white * 0.05
+        sun = Sun(start, '46.5', '7.9', True)
 
         # Simulation parameters
         speedup = 2
@@ -283,7 +290,7 @@ class CsvCompetition:
         print('Origin at: ', origin)
         
         # find top-left positions for map
-        top_left = origin - vector(0, 1500, 2000) # vector(np.array(X).min(), 1000, np.array(Z).min()) # move up and down here!
+        top_left = origin - vector(2000, 1500, 2000) # vector(np.array(X).min(), 1000, np.array(Z).min()) # move up and down here!
         top_left_local = top_left - origin # in local coordinates, 
 
         # use benjamin as top_left:
@@ -364,8 +371,11 @@ class CsvCompetition:
             #p = plot3D(f, elevation_data.shape[0],plot_pos.z+(width-width/shrink_height), plot_pos.z+(width-width/shrink_height)+width/shrink_height, plot_pos.x, plot_pos.x+width, 0, 1000, texture=create_url(x, y, zoom))
             
             # no texture and correct shape
-            texture = f'airstart3d/textures/contours/tile_{tile_x}_{tile_y}.png'
-            texture = f'airstart3d/textures/swissraster/tile_{tile_x}_{tile_y}.png'
+            #texture = f'airstart3d/textures/contours/tile_{tile_x}_{tile_y}.png' # contours
+            #texture = f'airstart3d/textures/slope/tile_{tile_x}_{tile_y}.png' # slope
+            #texture = f'airstart3d/textures/curvature/tile_{tile_x}_{tile_y}.png' # curvature
+            texture = f'airstart3d/textures/thermal/tile_{tile_x}_{tile_y}.png' # thermal
+            #texture = f'airstart3d/textures/swissraster/tile_{tile_x}_{tile_y}.png' # swissraster
             p = plot3D(f, elevation_data.shape[0] ,plot_pos.z, plot_pos.z+width+50 , plot_pos.x, plot_pos.x+width+50, 0, 1000, texture=texture)
 
         
@@ -396,8 +406,8 @@ class CsvCompetition:
             start_c=color.red
             emissive = False
             retain = 25
-            #if 'fankhauser-benjamin' == self.pilots[i].name:
-            if 'vergari-marco' == self.pilots[i].name:
+            if 'fankhauser-benjamin' == self.pilots[i].name:
+            #if 'vergari-marco' == self.pilots[i].name:
                 start_c = color.yellow
                 emissive = False
                 retain = 200
@@ -514,6 +524,8 @@ class CsvCompetition:
                 pos = pilots[follow_pilot].pos
                 prev_pos = vector(pos.x, pos.y, pos.z)
             
+            # Update Sun
+            sun.update(t) # based on time delta in seconds
                 
             # update time
             t += dt
@@ -523,14 +535,16 @@ class CsvCompetition:
 if __name__ == '__main__':
 
     # Swiss League Cup March
-    airstart = datetime.time(12, 30) # UTC
+    airstart = datetime.datetime(2025, 3, 8, 12, 30) # UTC
     t_start = datetime.time(13, 13)
     t_end = datetime.time(13, 30)
-    competition = CsvCompetition('data/dump/task_2025-03-08')
-    competition.read_pilots(airstart, t_start, t_end)
+    competition = CsvCompetition('data/dump/task_2025-03-08', airstart)
+    competition.read_pilots(t_start, t_end)
     competition.compute_thermal_centroids()
     #competition.plot_integrated_climb()
-    competition.animate_pilots(fix_pilot=False)
+
+    start_animation = datetime.datetime(2025, 3, 8, 13, 13)
+    competition.animate_pilots(start_animation, fix_pilot=False)
 
 
 

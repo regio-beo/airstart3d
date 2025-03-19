@@ -1,14 +1,18 @@
 
 
+from datetime import datetime
 import rasterio
 import numpy as np
 import os
+from scipy.ndimage import sobel, laplace, gaussian_filter
 
 from vpython import *
 
 import matplotlib.pyplot as plt
 
 from tif_viewer import swissraster_to_rgb
+
+from airstart3d.sun import Sun
 
 '''
 This script reads elevation data from the EU-DEM project
@@ -99,7 +103,7 @@ class plot3D:
     def make_vertex(self,x,y,tex_x, tex_y, value):        
         #texpos = vector(tex_x/self.L, tex_y/self.L, 0)
         texpos = vector(tex_y/self.L, 1.-tex_x/self.L, 0)
-        return vertex(pos=vec(y,value,x), texpos=texpos, shininess=0.01, normal=vec(0,1,0))
+        return vertex(pos=vec(y,value,x), texpos=texpos, shininess=0.0, normal=vec(0,1,0))
         
     def get_vertex(self,x,y):
         return self.vertices[x*self.L+y]
@@ -188,8 +192,244 @@ def read_elevation_data_32632(x, y, width):
     ax.grid(False)
     ax.axis('off')
     plt.savefig(f'airstart3d/textures/contours/tile_{x}_{y}.png', dpi=150, bbox_inches='tight', pad_inches=0, transparent=False)
+
+    Z = data
+    gZ = gaussian_filter(data, 1.0, mode="nearest")
+    dzdx = sobel(Z, axis=1)
+    dzdy = sobel(Z, axis=0)
+
+    # compute slope
+    slope = np.sqrt(dzdx**2 + dzdy**2)
+
+    # compute curvature
+    curvature = laplace(gZ)
+    # fix border:
+    curvature = curvature[1:-1, 1:-1]
+    #curvature[:, 0] = 0
+    #curvature[0, :] = 0
+    #curvature[:, -1] = 0        
+    #curvature[-1, :] = 0
+
+    # compute South aspect:
+    aspect = np.arctan2(dzdy, dzdx) * (180/np.pi)
+    aspect[aspect < 0] += 360 # inside [0, 360]
+    
+    # max is 180:
+    # aspect[aspect > 180] -= 180 # inside[0, 180]
+    
+    # show the curvature:
+    #plt.imshow(curvature, cmap='bwr_r', origin='upper', vmin=-10, vmax=10)
+
+    # Aspect:
+    # plt.imshow(aspect, cmap="gray", origin='upper')
+
+    plt.close()
+    fig, ax = plt.subplots()
+    ax.imshow(slope, cmap='bwr', origin='upper', vmin=0, vmax=200)
+    ax.set_aspect('equal', adjustable='box')
+    ax.grid(False)
+    ax.axis('off')
+    plt.savefig(f'airstart3d/textures/slope/tile_{x}_{y}.png', dpi=150, bbox_inches='tight', pad_inches=0, transparent=False)
+
+    plt.close()
+    fig, ax = plt.subplots()
+    ax.imshow(curvature, cmap='bwr_r', origin='upper', vmin=-10, vmax=10)
+    ax.set_aspect('equal', adjustable='box')
+    ax.grid(False)
+    ax.axis('off')
+    plt.savefig(f'airstart3d/textures/curvature/tile_{x}_{y}.png', dpi=150, bbox_inches='tight', pad_inches=0, transparent=False)
+
+    '''thermal = compute_thermal_differential(x, y, data)
+    plt.close()
+    fig, ax = plt.subplots()
+    ax.imshow(thermal, origin='upper')
+    ax.set_aspect('equal', adjustable='box')
+    ax.grid(False)
+    ax.axis('off')
+    plt.savefig(f'airstart3d/textures/thermal/tile_{x}_{y}.png', dpi=150, bbox_inches='tight', pad_inches=0, transparent=False)
+    '''
+
     return data
  
+def compute_thermal_differential(x, y, elevation_data):
+
+    DO_PLOT = True
+    if DO_PLOT:    
+        plt.close()
+        fig, ax = plt.subplots()
+
+    # Compute Area of each tile:
+    Z = elevation_data
+    real_area = np.zeros(elevation_data.shape)        
+    for row in range(real_area.shape[0]-1):
+        for col in range(real_area.shape[1]-1):
+            x = np.array([25, Z[row+1, col]-Z[row, col], 0])
+            z = np.array([0, Z[row, col+1] - Z[row, col], 25])
+            area = np.linalg.norm(np.cross(x, z))
+            real_area[row, col] = area
+    
+    real_area = np.clip(real_area, 0, 1200)
+    
+    #ax.imshow(real_area)
+    #plt.show()
+    #plt.close()
+    #fig, ax = plt.subplots()
+
+    # Compute normals
+    Z = elevation_data
+    dzdx = sobel(Z, axis=1)
+    dzdy = sobel(Z, axis=0)
+    
+    sun = Sun(datetime(2025, 3, 8, 12, 30), '46.5', '7.9')
+    sun_direction = sun.get_sun_direction(sun.observer)
+    sun_direction = np.array([sun_direction.x, sun_direction.y, sun_direction.z])
+    sun_intensity = np.zeros(elevation_data.shape)        
+    # get vector of sun
+    for row in range(sun_intensity.shape[0]):
+        for col in range(sun_intensity.shape[1]):
+            x = np.array([1, dzdx[row, col], 0])
+            y = np.array([0, dzdy[row, col], 1])
+            n = -np.cross(x, y)
+            n = n / np.linalg.norm(n)
+            sun_intensity[row, col] = 1.0 * np.dot(n, sun_direction) * real_area[row, col]
+    
+    sun_intensity = np.clip(sun_intensity, 0, 1200) # should not be higher..
+    # inversion:
+    sun_intensity[elevation_data < 1000] = 0.
+
+    # i got the problem..
+    #return sun_intensity # stop here!
+
+
+    # D8 Flow Algorithm:
+    Z = gaussian_filter(-elevation_data, 2.0) # negative elevation        
+    # Grid size        
+    rows, cols = Z.shape
+
+    d8_dirs = np.array([[6,  7,   8],
+                        [5,  0,   1],
+                        [4,  3,   2]])
+
+    # Offsets for neighbors (dx, dy)
+    dx = [-1,  0,  1, -1, 1, -1, 0, 1]
+    dy = [-1, -1, -1,  0, 0,  1, 1, 1]
+
+    # Initialize flow direction grid
+    flow_dir = np.zeros_like(Z, dtype=int)
+
+    # Compute flow direction for each cell (excluding edges)
+    for y in range(1, rows - 1):
+        for x in range(1, cols - 1):
+            min_slope = 0
+            best_direction = 0
+
+            # Get elevation of the current cell
+            elev = Z[y, x]
+
+            # Check all 8 neighbors
+            for i in range(8):
+                nx, ny = x + dx[i], y + dy[i]  # Neighbor coordinates
+                neighbor_elev = Z[ny, nx]
+
+                # Compute slope (difference in elevation)
+                slope = elev - neighbor_elev  # No need to divide by distance for D8
+
+                # Find the steepest downward slope
+                if slope > min_slope:
+                    min_slope = slope
+                    best_direction = d8_dirs[i // 3, i % 3]  # Get corresponding D8 value
+
+            # Assign flow direction
+            flow_dir[y, x] = best_direction
+        
+        ## Compute accumulated flow:
+    #flow_rate = 0.1 # this is introduced at each cell    
+
+    directions = {
+        0: (0, 0),
+        6: (-1, -1),
+        7: (0, -1),
+        8: (1, -1),
+        5: (-1, 0),
+        1: (1, 0),
+        4: (-1, 1),
+        3: (0, 1),
+        2: (1, 1)
+    }
+
+    dt = 1.0
+    total_time = 300
+    k = 0.7
+    flow_accumulated = np.zeros(flow_dir.shape)
+    next_accumulated = np.zeros(flow_dir.shape)
+    #flow_accumulated = sun_intensity.copy() # initialize
+    cell_accumulated = np.zeros(flow_dir.shape)
+    release_threshold = 1200 * 30 # so many timesteps
+
+    for t in range(int(total_time/ dt)):
+        next_accumulated.fill(0)
+        print('t:', t)
+        print('max cell: ', np.max(cell_accumulated))
+        print('max flow: ', np.max(flow_accumulated))
+        for row in range(flow_accumulated.shape[0]):
+            for col in range(flow_accumulated.shape[1]):                
+                direction = flow_dir[row, col]
+
+                dc, dr = directions[direction]
+                nr, nc = row+dr, col+dc
+
+                if 1 <= nr < flow_accumulated.shape[0]-1 and 1 <= nc < flow_accumulated.shape[1]-1: # ignore border
+                    next_accumulated[nr, nc] += flow_accumulated[row, col] # send current flow
+                
+                # if at 00: release thermal
+                #if dc == 0 and dr == 0:
+                #    next_accumulated[nr, nc] = 0.
+
+                cell_accumulated[row, col] += sun_intensity[row, col]
+                if cell_accumulated[row, col] > release_threshold:
+                    # release own cell state
+                    if 1 <= nr < flow_accumulated.shape[0]-1 and 1 <= nc < flow_accumulated.shape[1]-1: # ignore border
+                        next_accumulated[nr, nc] += cell_accumulated[row, col]
+                    
+                    # reset state
+                    cell_accumulated[row, col] = 0.
+        
+        # release thermals:
+        next_accumulated[flow_dir == 0] = 0.
+
+        flow_accumulated = np.clip(next_accumulated, 0, release_threshold*4)
+                                                   
+                
+                
+                
+                
+
+        #        if 1 <= nr < flow_accumulated.shape[0]-1 and 1 <= nc < flow_accumulated.shape[1]-1: # ignore border
+        #            #next_accumulated[nr, nc] += (sun_intensity[row, col] + k*flow_accumulated[row, col])*dt
+        #            # spread only:
+        #            next_accumulated[nr, nc] += (k*flow_accumulated[row, col])
+        #flow_accumulated = gaussian_filter(flow_accumulated, 0.1) + 0.1 * np.clip(next_accumulated.copy(), 0, 1200)
+
+        if DO_PLOT:
+            # redraw
+            ax.imshow(flow_accumulated, origin="upper")
+            #ax.imshow(cell_accumulated, origin="upper")
+            fig.canvas.draw()
+            plt.pause(0.1)
+
+
+    if DO_PLOT:
+        # final draw:
+        ax.imshow(flow_accumulated, origin="upper")
+        #ax.imshow(cell_accumulated, origin="upper")
+
+        ax.set_aspect('equal', adjustable='box')
+        ax.grid(False)
+        ax.axis('off')
+        plt.savefig('airstart3d/textures/test/test.png', dpi=150, bbox_inches='tight', pad_inches=0, transparent=False)                
+        plt.show()
+    return flow_accumulated
+
 
 if __name__ == '__main__':
         
@@ -220,8 +460,9 @@ if __name__ == '__main__':
     # x, y at top_left?
     #x=420011.130248355
     #y=5170090.784371755    
-    x = 420011
+    x = 420011-2000
     y = 5170090
+    width = 5000
 
     # 1. Determine the 5x5 degree tile for Grindelwald
     #lat_min, lon_min, lat_max, lon_max = get_tile_coordinates(lat, lon)
@@ -241,27 +482,29 @@ if __name__ == '__main__':
     elevation_data = read_elevation_data_32632(x, y, width)
 
 
-    USE_MATPLOTLIB = False
+    USE_MATPLOTLIB = True
+    USE_VPYTHON = True
     if USE_MATPLOTLIB:
         # plot contour
+        grid = elevation_data.shape[0]
         X = np.arange(grid)
         Y = -np.arange(grid)
         X, Y = np.meshgrid(X, Y)
 
-        fig, ax = plt.subplots()
+        plt.close()
+        
+
         # iso lines:
         #ax.contour(X, Y, elevation_data, levels=50)
+        #ax.imshow(elevation_data, cmap="gray", origin="upper")
 
-        img = ax.imshow(elevation_data, cmap="gray", origin="upper")
+
+        compute_thermal_differential(x, y, elevation_data)
 
 
-        ax.set_aspect('equal', adjustable='box')
-        ax.grid(False)
-        ax.axis('off')
-        plt.savefig('airstart_3d/swiss_cup_flex_march.png', dpi=150, bbox_inches='tight', pad_inches=0, transparent=False)
-        plt.show()
+       
     
-    else:
+    if USE_VPYTHON:
         # use vpython
 
         L = elevation_data.shape[0]
@@ -285,7 +528,12 @@ if __name__ == '__main__':
         np.save("airstart3d/elevation_data.npy", elevation_data)
 
         #660.643, -1500, -495.034>
-        p = plot3D(f, L, 0, width, 0, width, 0, 1000) # function, xmin, xmax, ymin, ymax (defaults 0, 1, 0, 1, 0, 1)
+        #texture = f'airstart3d/textures/contours/tile_{x}_{y}.png'
+        #texture = f'airstart3d/textures/slope/tile_{x}_{y}.png'
+        #texture = f'airstart3d/textures/curvature/tile_{x}_{y}.png'
+        texture = 'airstart3d/textures/test/test.png'
+        w2 = width//2
+        p = plot3D(f, L, -w2, w2, -w2, w2, 0, 1000, texture=texture) # function, xmin, xmax, ymin, ymax (defaults 0, 1, 0, 1, 0, 1)
 
 
 

@@ -15,5 +15,6 @@ setup(
         "pandas",
         "tqdm",
         "pillow",
+        "ephem"
     ],
 )

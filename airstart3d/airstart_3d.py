@@ -536,14 +536,14 @@ if __name__ == '__main__':
 
     # Swiss League Cup March
     airstart = datetime.datetime(2025, 3, 8, 12, 30) # UTC
-    t_start = datetime.time(13, 13)
-    t_end = datetime.time(13, 30)
+    t_start = datetime.time(12, 15)
+    t_end = datetime.time(12, 30)
     competition = CsvCompetition('data/dump/task_2025-03-08', airstart)
     competition.read_pilots(t_start, t_end)
     competition.compute_thermal_centroids()
     #competition.plot_integrated_climb()
 
-    start_animation = datetime.datetime(2025, 3, 8, 13, 13)
+    start_animation = datetime.datetime(2025, 3, 8, 12, 15)
     competition.animate_pilots(start_animation, fix_pilot=False)
 
 

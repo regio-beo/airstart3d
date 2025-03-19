@@ -239,21 +239,21 @@ def read_elevation_data_32632(x, y, width):
     ax.axis('off')
     plt.savefig(f'airstart3d/textures/curvature/tile_{x}_{y}.png', dpi=150, bbox_inches='tight', pad_inches=0, transparent=False)
 
-    '''thermal = compute_thermal_differential(x, y, data)
+    thermal = compute_thermal_differential(x, y, data)
     plt.close()
     fig, ax = plt.subplots()
-    ax.imshow(thermal, origin='upper')
+    ax.imshow(thermal, vmin=0, vmax=1.15, origin='upper')
     ax.set_aspect('equal', adjustable='box')
     ax.grid(False)
     ax.axis('off')
     plt.savefig(f'airstart3d/textures/thermal/tile_{x}_{y}.png', dpi=150, bbox_inches='tight', pad_inches=0, transparent=False)
-    '''
+    
 
     return data
  
 def compute_thermal_differential(x, y, elevation_data):
 
-    DO_PLOT = True
+    DO_PLOT = True and __name__ == '__main__'
     if DO_PLOT:    
         plt.close()
         fig, ax = plt.subplots()
@@ -266,14 +266,17 @@ def compute_thermal_differential(x, y, elevation_data):
             x = np.array([25, Z[row+1, col]-Z[row, col], 0])
             z = np.array([0, Z[row, col+1] - Z[row, col], 25])
             area = np.linalg.norm(np.cross(x, z))
-            real_area[row, col] = area
+            real_area[row, col] = area/625
     
-    real_area = np.clip(real_area, 0, 1200)
+    real_area = np.sqrt(np.clip(real_area, 0, 2)) # 2x => 45Grad
     
-    #ax.imshow(real_area)
-    #plt.show()
-    #plt.close()
-    #fig, ax = plt.subplots()
+    #real_area.fill(1.0) # do not use real_area
+    
+    if DO_PLOT:
+        ax.imshow(real_area)
+        plt.show()
+        #plt.close()
+        fig, ax = plt.subplots()
 
     # Compute normals
     Z = elevation_data
@@ -293,11 +296,16 @@ def compute_thermal_differential(x, y, elevation_data):
             n = n / np.linalg.norm(n)
             sun_intensity[row, col] = 1.0 * np.dot(n, sun_direction) * real_area[row, col]
     
-    sun_intensity = np.clip(sun_intensity, 0, 1200) # should not be higher..
+    sun_intensity = np.clip(sun_intensity, 0, 2) # should not be higher..
+    
     # inversion:
-    sun_intensity[elevation_data < 1000] = 0.
+    #sun_intensity[elevation_data < 1000] = 0.
 
-    # i got the problem..
+    if DO_PLOT:
+        ax.imshow(sun_intensity)
+        plt.show()
+        fig, ax = plt.subplots()
+    
     #return sun_intensity # stop here!
 
 
@@ -358,46 +366,47 @@ def compute_thermal_differential(x, y, elevation_data):
     }
 
     dt = 1.0
-    total_time = 300
-    k = 0.7
+    total_time = 10
+    k = 0.1
     flow_accumulated = np.zeros(flow_dir.shape)
     next_accumulated = np.zeros(flow_dir.shape)
     #flow_accumulated = sun_intensity.copy() # initialize
-    cell_accumulated = np.zeros(flow_dir.shape)
-    release_threshold = 1200 * 30 # so many timesteps
+    #cell_accumulated = np.zeros(flow_dir.shape)
+    #release_threshold = 1200 * 30 # so many timesteps
 
     for t in range(int(total_time/ dt)):
         next_accumulated.fill(0)
         print('t:', t)
-        print('max cell: ', np.max(cell_accumulated))
+        #print('max cell: ', np.max(cell_accumulated))
         print('max flow: ', np.max(flow_accumulated))
         for row in range(flow_accumulated.shape[0]):
             for col in range(flow_accumulated.shape[1]):                
-                direction = flow_dir[row, col]
+                
+                next_accumulated[row, col] += sun_intensity[row, col]
 
+                direction = flow_dir[row, col]
                 dc, dr = directions[direction]
                 nr, nc = row+dr, col+dc
 
                 if 1 <= nr < flow_accumulated.shape[0]-1 and 1 <= nc < flow_accumulated.shape[1]-1: # ignore border
-                    next_accumulated[nr, nc] += flow_accumulated[row, col] # send current flow
+                    next_accumulated[nr, nc] += k*flow_accumulated[row, col] # send current flow
                 
                 # if at 00: release thermal
                 #if dc == 0 and dr == 0:
                 #    next_accumulated[nr, nc] = 0.
 
-                cell_accumulated[row, col] += sun_intensity[row, col]
-                if cell_accumulated[row, col] > release_threshold:
-                    # release own cell state
-                    if 1 <= nr < flow_accumulated.shape[0]-1 and 1 <= nc < flow_accumulated.shape[1]-1: # ignore border
-                        next_accumulated[nr, nc] += cell_accumulated[row, col]
-                    
-                    # reset state
-                    cell_accumulated[row, col] = 0.
+                #cell_accumulated[row, col] += sun_intensity[row, col]
+                #if cell_accumulated[row, col] > release_threshold:
+                #    # release own cell state
+                #    if 1 <= nr < flow_accumulated.shape[0]-1 and 1 <= nc < flow_accumulated.shape[1]-1: # ignore border
+                #        next_accumulated[nr, nc] += cell_accumulated[row, col]
+                #    
+                #    # reset state
+                #    cell_accumulated[row, col] = 0.
         
         # release thermals:
-        next_accumulated[flow_dir == 0] = 0.
-
-        flow_accumulated = np.clip(next_accumulated, 0, release_threshold*4)
+        #next_accumulated[flow_dir == 0] = 0.
+        flow_accumulated = np.clip(next_accumulated, 0, 100)
                                                    
                 
                 
@@ -415,7 +424,7 @@ def compute_thermal_differential(x, y, elevation_data):
             ax.imshow(flow_accumulated, origin="upper")
             #ax.imshow(cell_accumulated, origin="upper")
             fig.canvas.draw()
-            plt.pause(0.1)
+            plt.pause(0.05)
 
 
     if DO_PLOT:
@@ -482,7 +491,7 @@ if __name__ == '__main__':
     elevation_data = read_elevation_data_32632(x, y, width)
 
 
-    USE_MATPLOTLIB = True
+    USE_MATPLOTLIB = False
     USE_VPYTHON = True
     if USE_MATPLOTLIB:
         # plot contour
@@ -531,7 +540,8 @@ if __name__ == '__main__':
         #texture = f'airstart3d/textures/contours/tile_{x}_{y}.png'
         #texture = f'airstart3d/textures/slope/tile_{x}_{y}.png'
         #texture = f'airstart3d/textures/curvature/tile_{x}_{y}.png'
-        texture = 'airstart3d/textures/test/test.png'
+        texture = f'airstart3d/textures/thermal/tile_{x}_{y}.png'
+        #texture = 'airstart3d/textures/test/test.png'
         w2 = width//2
         p = plot3D(f, L, -w2, w2, -w2, w2, 0, 1000, texture=texture) # function, xmin, xmax, ymin, ymax (defaults 0, 1, 0, 1, 0, 1)
 

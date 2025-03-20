@@ -113,6 +113,16 @@ class plot3D:
 
 ''' end of it '''
 
+def plot_triggers(tile_x, tile_y, elevation_data, pos, width):    
+    triggers = np.load(f"airstart3d/textures/curvature/trigger_{tile_x}_{tile_y}.npy")
+    for row in range(triggers.shape[0]):
+        for col in range(triggers.shape[1]):
+            length = triggers[row, col]
+            if length > 1.1:
+                print("create sphere")
+                trigger_pos = vector(col*25+pos.x, elevation_data[row+1, col+1], row*25+pos.z)
+                axis = vector(0, 1, -0.2)
+                cylinder(pos=trigger_pos, axis=axis, length=length*650, radius=length*50, color=color.yellow)
 
 def get_tile_coordinates(lat, lon, tile_size=5):
     # Determine the bottom-left corner of the 5x5 degree tile
@@ -231,15 +241,21 @@ def read_elevation_data_32632(x, y, width):
     ax.axis('off')
     plt.savefig(f'airstart3d/textures/slope/tile_{x}_{y}.png', dpi=150, bbox_inches='tight', pad_inches=0, transparent=False)
 
+
     plt.close()
     fig, ax = plt.subplots()
-    ax.imshow(curvature, cmap='bwr_r', origin='upper', vmin=-10, vmax=10)
+    thermal = compute_thermal_differential(x, y, data)
+    curvature[curvature > -5] = 0.
+    curvature[curvature < -5] = 1.0    
+    curvature = curvature * thermal[1:-1, 1:-1]
+    np.save(f"airstart3d/textures/curvature/trigger_{x}_{y}.npy", curvature)
+    ax.imshow(curvature, cmap='bwr', origin='upper')
     ax.set_aspect('equal', adjustable='box')
     ax.grid(False)
     ax.axis('off')
     plt.savefig(f'airstart3d/textures/curvature/tile_{x}_{y}.png', dpi=150, bbox_inches='tight', pad_inches=0, transparent=False)
 
-    thermal = compute_thermal_differential(x, y, data)
+    #thermal = compute_thermal_differential(x, y, data)
     plt.close()
     fig, ax = plt.subplots()
     ax.imshow(thermal, vmin=0, vmax=1.15, origin='upper')
@@ -248,12 +264,11 @@ def read_elevation_data_32632(x, y, width):
     ax.axis('off')
     plt.savefig(f'airstart3d/textures/thermal/tile_{x}_{y}.png', dpi=150, bbox_inches='tight', pad_inches=0, transparent=False)
     
-
     return data
  
 def compute_thermal_differential(x, y, elevation_data):
 
-    DO_PLOT = True and __name__ == '__main__'
+    DO_PLOT = False and __name__ == '__main__'
     if DO_PLOT:    
         plt.close()
         fig, ax = plt.subplots()
@@ -403,16 +418,9 @@ def compute_thermal_differential(x, y, elevation_data):
                 #    
                 #    # reset state
                 #    cell_accumulated[row, col] = 0.
-        
-        # release thermals:
-        #next_accumulated[flow_dir == 0] = 0.
-        flow_accumulated = np.clip(next_accumulated, 0, 100)
+                
+        flow_accumulated = next_accumulated
                                                    
-                
-                
-                
-                
-
         #        if 1 <= nr < flow_accumulated.shape[0]-1 and 1 <= nc < flow_accumulated.shape[1]-1: # ignore border
         #            #next_accumulated[nr, nc] += (sun_intensity[row, col] + k*flow_accumulated[row, col])*dt
         #            # spread only:
@@ -426,6 +434,9 @@ def compute_thermal_differential(x, y, elevation_data):
             fig.canvas.draw()
             plt.pause(0.05)
 
+    # release thermals:
+    #flow_accumulated[flow_dir != 0] = 0.
+    #flow_accumulated = gaussian_filter(flow_accumulated, 16)
 
     if DO_PLOT:
         # final draw:
@@ -543,6 +554,7 @@ if __name__ == '__main__':
         texture = f'airstart3d/textures/thermal/tile_{x}_{y}.png'
         #texture = 'airstart3d/textures/test/test.png'
         w2 = width//2
+        plot_triggers(x, y, elevation_data, vector(-w2, -2000, -w2), width)
         p = plot3D(f, L, -w2, w2, -w2, w2, 0, 1000, texture=texture) # function, xmin, xmax, ymin, ymax (defaults 0, 1, 0, 1, 0, 1)
 
 

@@ -17,7 +17,7 @@ from vpython import scene, canvas, sphere, vector, rate, color, cylinder, text, 
 
 from sklearn.cluster import KMeans, AgglomerativeClustering
 
-from airstart3d.elevation import plot3D, read_elevation_data_4258, read_elevation_data_32632, read_swissraster_utm32
+from airstart3d.elevation import plot3D, read_elevation_data_4258, read_elevation_data_32632, read_swissraster_utm32, plot_triggers
 from airstart3d.sun import Sun
 
 '''
@@ -364,6 +364,9 @@ class CsvCompetition:
 
             plot_pos = top_left_local - map_offset_elevation
             plot_pos += vector(i*width, 0, j*width)
+
+            # plot thermal triggers
+            #plot_triggers(tile_x, tile_y, elevation_data-origin.y-100, plot_pos, width)
         
             # distort the elevation to match the texture, hmmm.
             #shrink_height = height/width
@@ -377,6 +380,7 @@ class CsvCompetition:
             texture = f'airstart3d/textures/thermal/tile_{tile_x}_{tile_y}.png' # thermal
             #texture = f'airstart3d/textures/swissraster/tile_{tile_x}_{tile_y}.png' # swissraster
             p = plot3D(f, elevation_data.shape[0] ,plot_pos.z, plot_pos.z+width+50 , plot_pos.x, plot_pos.x+width+50, 0, 1000, texture=texture)
+
 
         
 
@@ -536,14 +540,14 @@ if __name__ == '__main__':
 
     # Swiss League Cup March
     airstart = datetime.datetime(2025, 3, 8, 12, 30) # UTC
-    t_start = datetime.time(12, 15)
-    t_end = datetime.time(12, 30)
+    t_start = datetime.time(12, 55)
+    t_end = datetime.time(13, 30)
     competition = CsvCompetition('data/dump/task_2025-03-08', airstart)
     competition.read_pilots(t_start, t_end)
     competition.compute_thermal_centroids()
     #competition.plot_integrated_climb()
 
-    start_animation = datetime.datetime(2025, 3, 8, 12, 15)
+    start_animation = datetime.datetime(2025, 3, 8, 12, 55)
     competition.animate_pilots(start_animation, fix_pilot=False)
 
 

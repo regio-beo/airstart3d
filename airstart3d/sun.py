@@ -21,20 +21,21 @@ class Sun:
         # init scene:
         if self.render_sun:
             self.sun_light = distant_light(direction=vector(0, 1, 0), color=color.white*0.9)        
-            self.sun_sphere = sphere(pos=vector(0, 1, 0) * 10, radius=10, color=color.yellow, emissive=True)
+            self.sun_sphere = sphere(pos=vector(0, 1, 0) * 100, radius=25, color=color.yellow, emissive=True)
+        self.update(0)
 
         
     def update(self, delta_seconds):
         #update observer
         self.observer.date = ephem.Date(self.start_date + ephem.second * delta_seconds)        
-        direction = self.get_sun_direction(self.observer)
+        direction = self.get_sun_direction()
         if self.render_sun:
             self.sun_light.direction = direction        
             self.sun_sphere.pos = direction * 1000
 
 
-    def get_sun_direction(self, observer):
-        sun = ephem.Sun(observer)
+    def get_sun_direction(self):
+        sun = ephem.Sun(self.observer)
         azimuth = float(sun.az)  # Convert from radians
         altitude = float(sun.alt)
 

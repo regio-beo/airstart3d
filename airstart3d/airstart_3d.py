@@ -17,8 +17,11 @@ from vpython import scene, canvas, sphere, vector, rate, color, cylinder, text, 
 
 from sklearn.cluster import KMeans, AgglomerativeClustering
 
-from airstart3d.elevation import plot3D, read_elevation_data_4258, read_elevation_data_32632, read_swissraster_utm32, plot_triggers
+from airstart3d.plot_3d import plot3D
+from airstart3d.elevation import read_elevation_data_4258, read_elevation_data_32632, read_swissraster_utm32, plot_triggers
 from airstart3d.sun import Sun
+from airstart3d.texture import *
+
 
 '''
 This Script reads the 3d data from the pilots in the start thermal.
@@ -377,9 +380,14 @@ class CsvCompetition:
             #texture = f'airstart3d/textures/contours/tile_{tile_x}_{tile_y}.png' # contours
             #texture = f'airstart3d/textures/slope/tile_{tile_x}_{tile_y}.png' # slope
             #texture = f'airstart3d/textures/curvature/tile_{tile_x}_{tile_y}.png' # curvature
-            texture = f'airstart3d/textures/thermal/tile_{tile_x}_{tile_y}.png' # thermal
+            #texture = f'airstart3d/textures/thermal/tile_{tile_x}_{tile_y}.png' # thermal
             #texture = f'airstart3d/textures/swissraster/tile_{tile_x}_{tile_y}.png' # swissraster
-            p = plot3D(f, elevation_data.shape[0] ,plot_pos.z, plot_pos.z+width+50 , plot_pos.x, plot_pos.x+width+50, 0, 1000, texture=texture)
+
+            # Thermal Texture:
+            texture = ThermalTexture(tile_x, tile_y, elevation_data)
+            url = texture.render(sun.get_sun_direction())
+
+            p = plot3D(f, elevation_data.shape[0] ,plot_pos.z, plot_pos.z+width+50 , plot_pos.x, plot_pos.x+width+50, 0, 1000, texture=url)
 
 
         

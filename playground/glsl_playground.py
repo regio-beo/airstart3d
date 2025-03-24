@@ -12,15 +12,18 @@ from airstart3d.sun import Sun
 VERTEX_SHADER = """
 #version 330 core
 layout (location = 0) in vec3 position;
-out vec3 fragColor;
+layout (location = 1) in vec3 normal;
 
-uniform vec3 sunDirection;
+out vec3 fragColor;
+out vec3 fragNormal;
 
 void main()
 {
     // compute sun direction for frag color
     gl_Position = vec4(position, 1.0);
-    fragColor = sunDirection;
+    fragColor = position+0.5;
+    fragNormal = normal;
+
 }
 """
 
@@ -28,10 +31,18 @@ void main()
 FRAGMENT_SHADER = """
 #version 330 core
 in vec3 fragColor;
+in vec3 fragNormal;
+
+uniform vec3 sunDirection;
+
 out vec4 color;
 void main()
 {
-    color = vec4(fragColor, 1.0);        
+    vec3 redish = vec3(0.8, 0.3, 0.3);
+
+    float diff = max(dot(sunDirection, fragNormal), 0.0);
+    //color = vec4(fragColor*diff, 1.0);        
+    color = vec4(diff*redish, 1.0);
 
 }
 """
@@ -68,22 +79,59 @@ def main():
     #glDisable(GL_CULL_FACE)
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
 
-    vertices = []
-    rows = elevation_data.shape[0]
-    cols = elevation_data.shape[1]
+    
+    rows = 3+2 #elevation_data.shape[0]
+    cols = 3+2 #elevation_data.shape[1]
     max_elevation = np.max(elevation_data)
-    for row in range(rows-1):
-        for col in range(cols-1):            
-            v1 = [col/cols - 0.5, -row/rows + 0.5, elevation_data[row, col]/max_elevation]
-            v2 = [col/cols - 0.5, -((row+1)/rows) + 0.5, elevation_data[row+1, col]/max_elevation]
-            v3 = [(col+1)/cols - 0.5, -((row+1)/rows) + 0.5, elevation_data[row+1, col+1]/max_elevation]
-            v4 = [(col+1)/cols - 0.5, -row/rows + 0.5, elevation_data[row, col+1]/max_elevation]            
-
-            for v in [v1, v2, v4, v2, v3, v4]:
-                vertices += v
-
-            # compute normals
+    vertices = np.zeros((rows, cols, 3))
+    for row in range(rows):
+        for col in range(cols):      
             
+            vertex = [col/cols -0.5, -row/rows + 0.5, elevation_data[row, col]/max_elevation]
+            vertices[row, col] = vertex
+
+            #v1 = [col/cols - 0.5, -row/rows + 0.5, elevation_data[row, col]/max_elevation]
+            #v2 = [col/cols - 0.5, -((row+1)/rows) + 0.5, elevation_data[row+1, col]/max_elevation]
+            #v3 = [(col+1)/cols - 0.5, -((row+1)/rows) + 0.5, elevation_data[row+1, col+1]/max_elevation]
+            #v4 = [(col+1)/cols - 0.5, -row/rows + 0.5, elevation_data[row, col+1]/max_elevation]            
+
+            #for v in [v1, v2, v4, v2, v3, v4]:
+            #    vertices += v
+
+    # compute normals
+    normals = np.zeros((rows-1, cols-1, 3))    
+    for row in range(rows-1):
+        for col in range(cols-1):
+            v = vertices[row, col]
+            a = vertices[row+1, col]
+            b = vertices[row, col+1]
+            n = np.cross(a, b)
+            n = n/np.linalg.norm(n)
+            normals[row, col] = n
+    
+    # Transform into GL Structures:
+    gl_vertices = []    
+    for row in range(rows-2):
+        for col in range(cols-2):
+
+            # get vertices:
+            v1 = vertices[row, col]
+            v2 = vertices[row+1, col]
+            v3 = vertices[row+1, col+1]
+            v4 = vertices[row, col+1]
+
+            # get normals:
+            n1 = normals[row, col]
+            n2 = normals[row+1, col]
+            n3 = normals[row+1, col+1]
+            n4 = normals[row, col+1]
+
+            print('n1', n1)
+
+            # interleave normals
+            for v in [v1, n1, v2, n2, v4, n4, v2, n2, v3, n3, v4, n4]:
+                gl_vertices += list(v)            
+    
             
 
     #print(vertices)
@@ -95,8 +143,10 @@ def main():
     #     0.0,  0.5, 0.0
     #]
 
-    num_vertices = int(len(vertices)/3)
-    vertices = (GLfloat * len(vertices))(*vertices)
+    num_vertices = int(len(gl_vertices)/6)
+    gl_vertices = (GLfloat * len(gl_vertices))(*gl_vertices)
+    
+
     
     
     vao = glGenVertexArrays(1)
@@ -104,10 +154,15 @@ def main():
     
     glBindVertexArray(vao)
     glBindBuffer(GL_ARRAY_BUFFER, vbo)
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW)
+    glBufferData(GL_ARRAY_BUFFER, sizeof(gl_vertices), gl_vertices, GL_STATIC_DRAW)
     
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, None)
+    # Position attribute
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * 4, None)
     glEnableVertexAttribArray(0)
+
+    # Normal attribute
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * 4, None)
+    glEnableVertexAttribArray(1)
     
     running = True
     time = 0
@@ -117,9 +172,7 @@ def main():
                 running = False
         
         # set sun 
-        sun_direction = sun.update(time*1000) # 10 milliseconds
-        #= sun.get_sun_direction()
-        print(sun_direction)
+        sun_direction = sun.update(time*100) # 10 milliseconds        
         glUniform3f(unf_sun_direction, sun_direction.x, sun_direction.y, sun_direction.z)
 
         glClear(GL_COLOR_BUFFER_BIT)

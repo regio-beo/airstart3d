@@ -15,6 +15,8 @@ setup(
         "pandas",
         "tqdm",
         "pillow",
-        "ephem"
+        "ephem",
+        "PyOpenGL",
+        "pygame"
     ],
 )

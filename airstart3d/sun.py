@@ -32,6 +32,7 @@ class Sun:
         if self.render_sun:
             self.sun_light.direction = direction        
             self.sun_sphere.pos = direction * 1000
+        return direction
 
 
     def get_sun_direction(self):

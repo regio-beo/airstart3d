@@ -10,7 +10,7 @@ from vpython import *
 
 import matplotlib.pyplot as plt
 
-from tif_viewer import swissraster_to_rgb
+from airstart3d.tif_viewer import swissraster_to_rgb
 
 from airstart3d.sun import Sun
 from airstart3d.texture import *

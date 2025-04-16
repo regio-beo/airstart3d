@@ -156,6 +156,7 @@ class CsvCompetition:
         self.pilots = []
         self.view = None
         self.airstart = airstart      
+        self.df_thermals = None
 
     def read_pilots(self, start, end):
         self.total_time = as_seconds(end) - as_seconds(start) # total time in seconds
@@ -183,7 +184,7 @@ class CsvCompetition:
         dfs = [p.df for p in self.pilots]
         names = [p.name for p in self.pilots]
         df_all = pd.concat(dfs, keys=names, names=['pilot']).reset_index()
-        df_all = df_all[df_all['x'] <=  419806 + 1200] # remove outliers
+        #df_all = df_all[df_all['x'] <=  419806 + 1200] # remove outliers
         df_sorted = df_all.sort_values(by=['seconds', value], ascending=[True, False])
         df_top20 = df_sorted.groupby('seconds').head(top20).reset_index()
         #self.df_thermal = df_top20.groupby('seconds')[['x', 'y', 'pressure_alt', 'gps_alt', 'pressure_climb']].mean().reset_index()
@@ -235,11 +236,11 @@ class CsvCompetition:
 
         # collect values:
         #self.plot_column_statistics('gps_climb')
-        #self.plot_column_statistics('pressure_climb')
-        self.plot_column_statistics('utm_speed')
+        self.plot_column_statistics('pressure_climb')
+        #self.plot_column_statistics('utm_speed')
         for pilot in self.pilots:
             if 'fankhauser-benjamin' == pilot.name:
-                plt.plot(pilot.df.index, pilot.df['utm_speed'])
+                plt.plot(pilot.df.index, pilot.df['pressure_climb'])
         
         plt.legend()
         plt.grid()
@@ -431,17 +432,17 @@ class CsvCompetition:
             pilots.append(sp)
         
         # Add Massive Thermal Sphere
-        #if self.df_thermals is not None:
-        thermal_X = [df['x'].values for df in self.df_thermals]
-        thermal_Y = [df['gps_alt'].values for df in self.df_thermals]
-        thermal_Z = [-df['y'].values for df in self.df_thermals]
-        thermal_C = [df['pressure_climb'].values for df in self.df_thermals]
+        if self.df_thermals is not None:
+            thermal_X = [df['x'].values for df in self.df_thermals]
+            thermal_Y = [df['gps_alt'].values for df in self.df_thermals]
+            thermal_Z = [-df['y'].values for df in self.df_thermals]
+            thermal_C = [df['pressure_climb'].values for df in self.df_thermals]
         
-        # center correction
-        #thermal_X = [x-center_x for x in thermal_X]
-        #thermal_Z = [z-center_z for z in thermal_Z]
+            # center correction
+            #thermal_X = [x-center_x for x in thermal_X]
+            #thermal_Z = [z-center_z for z in thermal_Z]
 
-        thermals = [sphere(pos=vector(0, 0, 0), radius=100, opacity=0.1, color=color.yellow) for _ in range(self.n_thermals)]
+            thermals = [sphere(pos=vector(0, 0, 0), radius=100, opacity=0.1, color=color.yellow) for _ in range(self.n_thermals)]
 
         # Add axes:
         L = 500
@@ -512,16 +513,17 @@ class CsvCompetition:
                 pilots[i].color = vector(r_val, g_val, b_val)                
             
             # Update thermal sphere:
-            for i in range(self.n_thermals):
-                new_x = (1.-tt)*thermal_X[i][t_j] + (tt)*thermal_X[i][t_j+1]                
-                new_y = (1.-tt)*thermal_Y[i][t_j] + (tt)*thermal_Y[i][t_j+1]
-                new_z = (1.-tt)*thermal_Z[i][t_j] + (tt)*thermal_Z[i][t_j+1]    
-                col = (1.-tt)*thermal_C[i][t_j] + (tt)*thermal_C[i][t_j+1]
-                thermals[i].pos = vector(new_x, new_y, new_z)-origin
+            if self.df_thermals is not None:
+                for i in range(self.n_thermals):
+                    new_x = (1.-tt)*thermal_X[i][t_j] + (tt)*thermal_X[i][t_j+1]                
+                    new_y = (1.-tt)*thermal_Y[i][t_j] + (tt)*thermal_Y[i][t_j+1]
+                    new_z = (1.-tt)*thermal_Z[i][t_j] + (tt)*thermal_Z[i][t_j+1]    
+                    col = (1.-tt)*thermal_C[i][t_j] + (tt)*thermal_C[i][t_j+1]
+                    thermals[i].pos = vector(new_x, new_y, new_z)-origin
 
-                # update radius and opacity:            
-                thermals[i].opacity = np.clip((col-0)/3., 0.1, 1.)
-                thermals[i].radius = 100*(col)/3.
+                    # update radius and opacity:            
+                    thermals[i].opacity = np.clip((col-0)/3., 0.1, 1.)
+                    thermals[i].radius = 100*(col)/3.
 
             # follow pilot:
             if follow_pilot is not None:
@@ -547,15 +549,23 @@ class CsvCompetition:
 if __name__ == '__main__':
 
     # Swiss League Cup March
-    airstart = datetime.datetime(2025, 3, 8, 12, 30) # UTC
-    t_start = datetime.time(12, 55)
-    t_end = datetime.time(13, 30)
-    competition = CsvCompetition('data/dump/task_2025-03-08', airstart)
+    #airstart = datetime.datetime(2025, 3, 8, 12, 30) # UTC
+    #t_start = datetime.time(12, 55)
+    #t_end = datetime.time(13, 30)
+    #directory = 'data/dump/task_2025-03-08'
+
+    # Swiss Regio Grindelwald
+    airstart = datetime.datetime(2025, 4, 12, 11, 00) # UTC
+    t_start = datetime.time(11, 5)
+    t_end = datetime.time(11, 15)
+    directory = 'data/dump/task_tila'
+
+    competition = CsvCompetition(directory, airstart)
     competition.read_pilots(t_start, t_end)
     competition.compute_thermal_centroids()
-    #competition.plot_integrated_climb()
+    competition.plot_integrated_climb()
 
-    start_animation = datetime.datetime(2025, 3, 8, 12, 55)
+    start_animation = datetime.datetime(2025, 4, 12, 11, 5)
     competition.animate_pilots(start_animation, fix_pilot=False)
 
 
